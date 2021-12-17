@@ -1,0 +1,118 @@
+// SPDX-License-Identifier: GPL-3.0
+
+pragma solidity ^0.8.0;
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/utils/math/SafeMath.sol";
+
+import "../../../interfaces/synthetix/IStakingRewards.sol";
+
+import "../StratManager.sol";
+
+abstract contract BaseStrategyDoubleRewardLoveLP is StratManager {
+  using SafeERC20 for IERC20;
+  using SafeMath for uint256;
+
+  // Tokens used
+  address public native;
+  address public output;
+  address public want;
+  address public loveToken;
+  address public lpToken0;
+  address public lpToken1;
+  address constant nullAddress = address(0);
+
+  // 2nd reward
+  address public output2;
+
+  // Third party contracts
+  address public chef;
+
+  // demominator value of fraction
+  uint256 public loveFraction;
+
+  uint256 public lastHarvest;
+
+  // Routes
+  address[] public outputToNativeRoute;
+  address[] public outputToLp0Route;
+  address[] public outputToLp1Route;
+  address[] public output2ToOutputRoute;
+  address[] public outputToLoveRoute;
+
+  function chargeFees(address) internal virtual;
+
+  function deposit() public virtual;
+
+  function _safeSwap(
+    uint256 _amountIn,
+    address[] memory _path,
+    address _to
+  ) internal virtual;
+
+  function _addLiquidity(uint256 lp0Bal, uint256 lp1Bal) internal virtual;
+
+  //events
+  event StratHarvest(address indexed harvester);
+
+  function harvest() external virtual onlyHarvester {
+    _harvest(nullAddress);
+  }
+
+  function harvestWithCallFeeRecipient(address callFeeRecipient)
+    external
+    virtual
+    onlyHarvester
+  {
+    _harvest(callFeeRecipient);
+  }
+
+  function managerHarvest() external onlyManager {
+    _harvest(nullAddress);
+  }
+
+  // compounds earnings and charges performance fee
+  function _harvest(address callFeeRecipient) internal whenNotPaused {
+    IStakingRewards(chef).getReward();
+    uint256 outputBal = IERC20(output).balanceOf(address(this));
+    uint256 output2Bal = IERC20(output2).balanceOf(address(this));
+    if (outputBal > 0 && output2Bal > 0) {
+      _safeSwap(output2Bal, output2ToOutputRoute, address(this));
+      chargeFees(callFeeRecipient);
+      toLove();
+      addLiquidity();
+      deposit();
+      lastHarvest = block.timestamp;
+      emit StratHarvest(msg.sender);
+    }
+  }
+
+  function toLove() internal {
+    uint256 loveBalance = IERC20(output).balanceOf(address(this)).div(
+      loveFraction
+    );
+
+    if (loveToken != output) {
+      _safeSwap(loveBalance, outputToLoveRoute, address(this));
+    }
+  }
+
+  // Adds liquidity to AMM and gets more LP tokens.
+  function addLiquidity() internal {
+    uint256 outputHalf = IERC20(output).balanceOf(address(this)).div(2);
+
+    if (lpToken0 != output) {
+      _safeSwap(outputHalf, outputToLp0Route, address(this));
+    }
+
+    if (lpToken1 != output) {
+      _safeSwap(outputHalf, outputToLp1Route, address(this));
+    }
+
+    uint256 lp0Bal = IERC20(lpToken0).balanceOf(address(this));
+    uint256 lp1Bal = IERC20(lpToken1).balanceOf(address(this));
+    if (lp0Bal > 0 && lp1Bal > 0) {
+      _addLiquidity(lp0Bal, lp1Bal);
+    }
+  }
+}
