@@ -125,16 +125,9 @@ contract StrategyStakingTripleRewardLP is
       1000
     );
 
-    uint256 nativeBal = toNative;
-    if (output != native) {
-      _safeSwap(toNative, outputToNativeRoute, address(this));
-      nativeBal = IERC20(native).balanceOf(address(this));
-    } else {
-      uint256 balanceLeft = IERC20(native).balanceOf(address(this));
-      if (nativeBal > balanceLeft) {
-        nativeBal = balanceLeft;
-      }
-    }
+    _safeSwap(toNative, outputToNativeRoute, address(this));
+
+    uint256 nativeBal = IERC20(native).balanceOf(address(this));
 
     uint256 callFeeAmount = nativeBal.mul(callFee).div(MAX_FEE);
     if (callFeeRecipient != nullAddress) {
