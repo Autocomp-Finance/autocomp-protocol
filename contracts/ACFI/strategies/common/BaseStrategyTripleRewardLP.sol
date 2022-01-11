@@ -54,13 +54,14 @@ abstract contract BaseStrategyTripleRewardLP is StratManager {
   //events
   event StratHarvest(address indexed harvester);
 
-  function harvest() external virtual {
+  function harvest() external virtual onlyHarvester {
     _harvest(nullAddress);
   }
 
   function harvestWithCallFeeRecipient(address callFeeRecipient)
     external
     virtual
+    onlyHarvester
   {
     _harvest(callFeeRecipient);
   }
